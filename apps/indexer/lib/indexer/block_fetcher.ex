@@ -37,8 +37,7 @@ defmodule Indexer.BlockFetcher do
 
   ## Options
 
-  Default options are pulled from application config under the
-  `:explorer, :indexer` keyspace. The follow options can be overridden:
+  Default options are pulled from application config under the :indexer` keyspace. The follow options can be overridden:
 
     * `:blocks_batch_size` - The number of blocks to request in one call to the JSONRPC.  Defaults to
       `#{@blocks_batch_size}`.  Block requests also include the transactions for those blocks.  *These transactions
@@ -71,6 +70,7 @@ defmodule Indexer.BlockFetcher do
     :timer.send_interval(15_000, self(), :debug_count)
 
     state = %{
+      json_rpc_named_arguments: Keyword.fetch!(opts, :json_rpc_named_arguments),
       genesis_task: nil,
       realtime_task: nil,
       realtime_interval: (opts[:block_rate] || @block_rate) * 2,
@@ -163,13 +163,13 @@ defmodule Indexer.BlockFetcher do
 
   defp fetch_transaction_receipts(_state, []), do: {:ok, %{logs: [], receipts: []}}
 
-  defp fetch_transaction_receipts(%{} = state, hashes) do
+  defp fetch_transaction_receipts(%{json_rpc_named_arguments: json_rpc_named_arguments} = state, hashes) do
     debug(fn -> "fetching #{length(hashes)} transaction receipts" end)
     stream_opts = [max_concurrency: state.receipts_concurrency, timeout: :infinity]
 
     hashes
     |> Enum.chunk_every(state.receipts_batch_size)
-    |> Task.async_stream(&EthereumJSONRPC.fetch_transaction_receipts(&1), stream_opts)
+    |> Task.async_stream(&EthereumJSONRPC.fetch_transaction_receipts(&1, json_rpc_named_arguments), stream_opts)
     |> Enum.reduce_while({:ok, %{logs: [], receipts: []}}, fn
       {:ok, {:ok, %{logs: logs, receipts: receipts}}}, {:ok, %{logs: acc_logs, receipts: acc_receipts}} ->
         {:cont, {:ok, %{logs: acc_logs ++ logs, receipts: acc_receipts ++ receipts}}}
@@ -182,8 +182,8 @@ defmodule Indexer.BlockFetcher do
     end)
   end
 
-  defp genesis_task(%{} = state) do
-    {:ok, latest_block_number} = EthereumJSONRPC.fetch_block_number_by_tag("latest")
+  defp genesis_task(%{json_rpc_named_arguments: json_rpc_named_arguments} = state) do
+    {:ok, latest_block_number} = EthereumJSONRPC.fetch_block_number_by_tag("latest", json_rpc_named_arguments)
     missing_ranges = missing_block_number_ranges(state, latest_block_number..0)
     count = Enum.count(missing_ranges)
 
@@ -293,8 +293,8 @@ defmodule Indexer.BlockFetcher do
     end)
   end
 
-  defp realtime_task(%{} = state) do
-    {:ok, latest_block_number} = EthereumJSONRPC.fetch_block_number_by_tag("latest")
+  defp realtime_task(%{json_rpc_named_arguments: json_rpc_named_arguments} = state) do
+    {:ok, latest_block_number} = EthereumJSONRPC.fetch_block_number_by_tag("latest", json_rpc_named_arguments)
     {:ok, seq} = Sequence.start_link([], latest_block_number, 2)
     stream_import(state, seq, max_concurrency: 1)
   end
@@ -312,8 +312,9 @@ defmodule Indexer.BlockFetcher do
   # Run at state.blocks_concurrency max_concurrency when called by `stream_import/3`
   # Only public for testing
   @doc false
-  def import_range(range, %{} = state, seq) do
-    with {:blocks, {:ok, next, result}} <- {:blocks, EthereumJSONRPC.fetch_blocks_by_range(range)},
+  def import_range(range, %{json_rpc_named_arguments: json_rpc_named_arguments} = state, seq) do
+    with {:blocks, {:ok, next, result}} <-
+           {:blocks, EthereumJSONRPC.fetch_blocks_by_range(range, json_rpc_named_arguments)},
          %{blocks: blocks, transactions: transactions_without_receipts} = result,
          cap_seq(seq, next, range),
          transaction_hashes = Transactions.params_to_hashes(transactions_without_receipts),

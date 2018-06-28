@@ -5,7 +5,7 @@ defmodule EthereumJSONRPC.Receipts do
   requests.
   """
 
-  import EthereumJSONRPC, only: [config: 1, json_rpc: 2]
+  import EthereumJSONRPC, only: [id_to_params: 1, json_rpc: 2, request: 1]
 
   alias EthereumJSONRPC.{Logs, Receipt}
 
@@ -111,25 +111,25 @@ defmodule EthereumJSONRPC.Receipts do
     Enum.map(elixir, &Receipt.elixir_to_params/1)
   end
 
-  def fetch(hashes) when is_list(hashes) do
-    hashes
-    |> Enum.map(&hash_to_json/1)
-    |> json_rpc(config(:url))
-    |> case do
-      {:ok, responses} ->
-        elixir_receipts =
-          responses
-          |> responses_to_receipts()
-          |> to_elixir()
+  @spec fetch([hashes :: String.t()], EthereumJSONRPC.json_rpc_named_arguments()) ::
+          {:ok, %{logs: list(), receipts: list()}} | {:error, reason :: term()}
+  def fetch(hashes, json_rpc_named_arguments) when is_list(hashes) do
+    id_to_hashes = id_to_params(hashes)
 
-        elixir_logs = elixir_to_logs(elixir_receipts)
-        receipts = elixir_to_params(elixir_receipts)
-        logs = Logs.elixir_to_params(elixir_logs)
+    with {:ok, responses} <-
+           id_to_hashes
+           |> get_transaction_receipt_requests()
+           |> json_rpc(json_rpc_named_arguments) do
+      elixir_receipts =
+        responses
+        |> responses_to_receipts()
+        |> to_elixir()
 
-        {:ok, %{logs: logs, receipts: receipts}}
+      elixir_logs = elixir_to_logs(elixir_receipts)
+      receipts = elixir_to_params(elixir_receipts)
+      logs = Logs.elixir_to_params(elixir_logs)
 
-      {:error, _reason} = err ->
-        err
+      {:ok, %{logs: logs, receipts: receipts}}
     end
   end
 
@@ -199,13 +199,14 @@ defmodule EthereumJSONRPC.Receipts do
     Enum.map(receipts, &Receipt.to_elixir/1)
   end
 
-  defp hash_to_json(hash) do
-    %{
-      "id" => hash,
-      "jsonrpc" => "2.0",
-      "method" => "eth_getTransactionReceipt",
-      "params" => [hash]
-    }
+  defp get_transaction_receipt_requests(id_to_hashes) when is_map(id_to_hashes) do
+    Enum.map(id_to_hashes, fn {id, hash} ->
+      get_transaciton_receipt_request(%{id: id, hash: hash})
+    end)
+  end
+
+  defp get_transaciton_receipt_request(%{id: id, hash: hash}) do
+    request(%{id: id, method: "eth_getTransactionReceipt", params: [hash]})
   end
 
   defp response_to_receipt(%{"result" => receipt}), do: receipt
