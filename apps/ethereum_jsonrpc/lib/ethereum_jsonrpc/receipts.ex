@@ -209,7 +209,7 @@ defmodule EthereumJSONRPC.Receipts do
     request(%{id: id, method: "eth_getTransactionReceipt", params: [hash]})
   end
 
-  defp response_to_receipt(%{"result" => receipt}), do: receipt
+  defp response_to_receipt(%{result: receipt}), do: receipt
 
   defp responses_to_receipts(responses) when is_list(responses) do
     Enum.map(responses, &response_to_receipt/1)

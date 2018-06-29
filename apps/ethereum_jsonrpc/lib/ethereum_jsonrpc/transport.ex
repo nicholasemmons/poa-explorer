@@ -26,6 +26,8 @@ defmodule EthereumJSONRPC.Transport do
   """
   @type batch_request :: [request]
 
+  @type result :: term()
+
   @typedoc """
   [JSONRPC response object](https://www.jsonrpc.org/specification#response_object)
 
@@ -43,7 +45,7 @@ defmodule EthereumJSONRPC.Transport do
 
   """
   @type response ::
-          %{jsonrpc: String.t(), result: term(), id: non_neg_integer()}
+          %{jsonrpc: String.t(), result: result, id: non_neg_integer()}
           | %{jsonrpc: String.t(), error: error, id: non_neg_integer()}
 
   @typedoc """
@@ -64,6 +66,6 @@ defmodule EthereumJSONRPC.Transport do
   """
   @type options :: term()
 
-  @callback json_rpc(request, options) :: {:ok, response} | {:error, reason :: term()}
+  @callback json_rpc(request, options) :: {:ok, result} | {:error, reason :: term()}
   @callback json_rpc(batch_request, options) :: {:ok, batch_response} | {:error, reason :: term()}
 end

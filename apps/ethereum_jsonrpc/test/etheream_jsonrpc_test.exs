@@ -1,18 +1,10 @@
 defmodule EthereumJSONRPCTest do
   use ExUnit.Case, async: true
+  use EthereumJSONRPC.Case
 
-  setup do
-    %{
-      json_rpc_named_arguments: [
-        transport: EthereumJSONRPC.HTTP,
-        transport_options: [
-          http: EthereumJSONRPC.HTTP.HTTPoison,
-          url: "https://sokol-trace.poa.network",
-          http_options: [recv_timeout: 60_000, timeout: 60_000, hackney: [pool: :ethereum_jsonrpc]]
-        ]
-      ]
-    }
-  end
+  import Mox
+
+  setup :verify_on_exit!
 
   doctest EthereumJSONRPC
 
@@ -20,29 +12,63 @@ defmodule EthereumJSONRPCTest do
     test "with all valid hash_data returns {:ok, addresses_params}", %{
       json_rpc_named_arguments: json_rpc_named_arguments
     } do
+      expected_fetched_balance_block_number = 1
+      expected_fetched_balance = 1
+
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {:ok, [%{id: 0, result: EthereumJSONRPC.integer_to_quantity(expected_fetched_balance)}]}
+        end)
+      end
+
+      hash = "0x8bf38d4764929064f2d4d3a56520a76ab3df415b"
+
       assert EthereumJSONRPC.fetch_balances(
-               [%{block_quantity: "0x1", hash_data: "0x8bf38d4764929064f2d4d3a56520a76ab3df415b"}],
+               [
+                 %{
+                   block_quantity: EthereumJSONRPC.integer_to_quantity(expected_fetched_balance_block_number),
+                   hash_data: hash
+                 }
+               ],
                json_rpc_named_arguments
              ) ==
                {:ok,
                 [
                   %{
-                    fetched_balance: 1,
-                    fetched_balance_block_number: 1,
-                    hash: "0x8bf38d4764929064f2d4d3a56520a76ab3df415b"
+                    fetched_balance: expected_fetched_balance,
+                    fetched_balance_block_number: expected_fetched_balance_block_number,
+                    hash: hash
                   }
                 ]}
     end
 
     test "with all invalid hash_data returns {:error, reasons}", %{json_rpc_named_arguments: json_rpc_named_arguments} do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {:ok,
+           [
+             %{
+               id: 0,
+               error: %{
+                 code: -32602,
+                 message:
+                   "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
+               }
+             }
+           ]}
+        end)
+      end
+
       assert EthereumJSONRPC.fetch_balances([%{block_quantity: "0x1", hash_data: "0x0"}], json_rpc_named_arguments) ==
                {:error,
                 [
                   %{
-                    "blockNumber" => "0x1",
-                    "code" => -32602,
-                    "hash" => "0x0",
-                    "message" =>
+                    code: -32602,
+                    data: %{
+                      "blockNumber" => "0x1",
+                      "hash" => "0x0"
+                    },
+                    message:
                       "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
                   }
                 ]}
@@ -51,6 +77,44 @@ defmodule EthereumJSONRPCTest do
     test "with a mix of valid and invalid hash_data returns {:error, reasons}", %{
       json_rpc_named_arguments: json_rpc_named_arguments
     } do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {
+            :ok,
+            [
+              %{
+                id: 0,
+                result: "0x0"
+              },
+              %{
+                id: 1,
+                result: "0x1"
+              },
+              %{
+                id: 2,
+                error: %{
+                  code: -32602,
+                  message:
+                    "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
+                }
+              },
+              %{
+                id: 3,
+                result: "0x3"
+              },
+              %{
+                id: 4,
+                error: %{
+                  code: -32602,
+                  message:
+                    "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
+                }
+              }
+            ]
+          }
+        end)
+      end
+
       assert EthereumJSONRPC.fetch_balances(
                [
                  # start with :ok
@@ -84,17 +148,21 @@ defmodule EthereumJSONRPCTest do
                {:error,
                 [
                   %{
-                    "blockNumber" => "0x2",
-                    "code" => -32602,
-                    "hash" => "0x3",
-                    "message" =>
+                    code: -32602,
+                    data: %{
+                      "blockNumber" => "0x2",
+                      "hash" => "0x3"
+                    },
+                    message:
                       "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
                   },
                   %{
-                    "blockNumber" => "0x4",
-                    "code" => -32602,
-                    "hash" => "0x5",
-                    "message" =>
+                    code: -32602,
+                    data: %{
+                      "blockNumber" => "0x4",
+                      "hash" => "0x5"
+                    },
+                    message:
                       "Invalid params: invalid length 1, expected a 0x-prefixed, padded, hex-encoded hash with length 40."
                   }
                 ]}
@@ -103,72 +171,35 @@ defmodule EthereumJSONRPCTest do
 
   describe "fetch_block_number_by_tag" do
     test "with earliest", %{json_rpc_named_arguments: json_rpc_named_arguments} do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {:ok, %{"number" => "0x0"}}
+        end)
+      end
+
       assert {:ok, 0} = EthereumJSONRPC.fetch_block_number_by_tag("earliest", json_rpc_named_arguments)
     end
 
     test "with latest", %{json_rpc_named_arguments: json_rpc_named_arguments} do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {:ok, %{"number" => "0x1"}}
+        end)
+      end
+
       assert {:ok, number} = EthereumJSONRPC.fetch_block_number_by_tag("latest", json_rpc_named_arguments)
       assert number > 0
     end
 
     test "with pending", %{json_rpc_named_arguments: json_rpc_named_arguments} do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        expect(EthereumJSONRPC.Mox, :json_rpc, fn _json, _options ->
+          {:ok, %{"number" => "0x2"}}
+        end)
+      end
+
       assert {:ok, number} = EthereumJSONRPC.fetch_block_number_by_tag("pending", json_rpc_named_arguments)
       assert number > 0
     end
-  end
-
-  describe "json_rpc/2" do
-    # regression test for https://github.com/poanetwork/poa-explorer/issues/254
-    #
-    # this test triggered a DoS with CloudFlare reporting 502 Bad Gateway
-    # (see https://github.com/poanetwork/poa-explorer/issues/340), so it can't be run against the real Sokol chain and
-    # must use `mox` to fake it.
-    test "transparently splits batch payloads that would trigger a 413 Request Entity Too Large", %{
-      json_rpc_named_arguments: json_rpc_named_arguments
-    } do
-      block_numbers = 0..13000
-
-      payload =
-        block_numbers
-        |> Stream.with_index()
-        |> Enum.map(&get_block_by_number_request/1)
-
-      assert_payload_too_large(payload, json_rpc_named_arguments)
-
-      assert {:ok, responses} = EthereumJSONRPC.json_rpc(payload, json_rpc_named_arguments)
-      assert Enum.count(responses) == Enum.count(block_numbers)
-
-      block_number_set = MapSet.new(block_numbers)
-
-      response_block_number_set =
-        Enum.into(responses, MapSet.new(), fn %{"result" => %{"number" => quantity}} ->
-          EthereumJSONRPC.quantity_to_integer(quantity)
-        end)
-
-      assert MapSet.equal?(response_block_number_set, block_number_set)
-    end
-  end
-
-  defp assert_payload_too_large(payload, json_rpc_named_arguments) do
-    assert Keyword.fetch!(json_rpc_named_arguments, :transport) == EthereumJSONRPC.HTTP
-
-    transport_options = Keyword.fetch!(json_rpc_named_arguments, :transport_options)
-
-    http = Keyword.fetch!(transport_options, :http)
-    url = Keyword.fetch!(transport_options, :url)
-    json = Jason.encode_to_iodata!(payload)
-    http_options = Keyword.fetch!(transport_options, :http_options)
-
-    assert {:ok, %{body: body, status_code: 413}} = http.json_rpc(url, json, http_options)
-    assert body =~ "413 Request Entity Too Large"
-  end
-
-  defp get_block_by_number_request({block_number, id}) do
-    %{
-      "id" => id,
-      "jsonrpc" => "2.0",
-      "method" => "eth_getBlockByNumber",
-      "params" => [EthereumJSONRPC.integer_to_quantity(block_number), true]
-    }
   end
 end

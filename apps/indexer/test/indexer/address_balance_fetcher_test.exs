@@ -50,7 +50,9 @@ defmodule Indexer.AddressBalanceFetcherTest do
       assert fetched_address.fetched_balance_block_number == block.number
     end
 
-    test "fetches unfetched addresses when less than max batch size", %{json_rpc_named_arguments: json_rpc_named_arguments} do
+    test "fetches unfetched addresses when less than max batch size", %{
+      json_rpc_named_arguments: json_rpc_named_arguments
+    } do
       {:ok, miner_hash} = Hash.Truncated.cast("0xe8ddc5c7a2d2f0d7a9798459c0104fdf5e987aca")
       miner = insert(:address, hash: miner_hash)
       block = insert(:block, miner: miner, number: 34)

@@ -1,8 +1,10 @@
 defmodule Indexer.BlockFetcherTest do
   # `async: false` due to use of named GenServer
-  use Explorer.DataCase, async: false
+  use EthereumJSONRPC.Case, async: false
+  use Explorer.DataCase
 
   import ExUnit.CaptureLog
+  import Mox
 
   alias Explorer.Chain.{Address, Block, Log, Transaction, Wei}
 
@@ -15,6 +17,12 @@ defmodule Indexer.BlockFetcherTest do
     InternalTransactionFetcherCase,
     Sequence
   }
+
+  # MUST use global mode because we aren't guaranteed to get `start_supervised`'s pid back fast enough to `allow` it to
+  # use expectations and stubs from test's pid.
+  setup :set_mox_global
+
+  setup :verify_on_exit!
 
   @tag capture_log: true
 
@@ -35,20 +43,6 @@ defmodule Indexer.BlockFetcherTest do
   #  INNER JOIN blocks
   #  ON blocks.hash = transactions.block_hash) as blocks
   @first_full_block_number 37
-
-  setup do
-    %{
-      json_rpc_named_arguments: [
-        transport: EthereumJSONRPC.HTTP,
-        transport_options: [
-          http: EthereumJSONRPC.HTTP.HTTPoison,
-          # Sokol only supports historical address balances on trace nodes, not those behind `https://sokol.poa.network`.
-          url: "https://sokol-trace.poa.network",
-          http_options: [recv_timeout: 60_000, timeout: 60_000, hackney: [pool: :ethereum_jsonrpc]]
-        ]
-      ]
-    }
-  end
 
   describe "start_link/1" do
     test "starts fetching blocks from latest and goes down", %{json_rpc_named_arguments: json_rpc_named_arguments} do
@@ -146,7 +140,7 @@ defmodule Indexer.BlockFetcherTest do
       start_supervised!({Task.Supervisor, name: Indexer.TaskSupervisor})
       AddressBalanceFetcherCase.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       InternalTransactionFetcherCase.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
-      {:ok, state} = BlockFetcher.init([])
+      {:ok, state} = BlockFetcher.init(json_rpc_named_arguments: json_rpc_named_arguments)
 
       %{state: state}
     end
@@ -186,7 +180,14 @@ defmodule Indexer.BlockFetcherTest do
       assert address.fetched_balance_block_number == 0
     end
 
-    test "can import range with all synchronous imported schemas", %{state: state} do
+    test "can import range with all synchronous imported schemas", %{json_rpc_named_arguments: json_rpc_named_arguments, state: state} do
+      if json_rpc_named_arguments[:transport] == EthereumJSONRPC.Mox do
+        EthereumJSONRPC.Mox
+        |> expect(:json_rpc, fn json, _options ->
+          assert json == :foo
+        end)
+      end
+
       {:ok, sequence} = Sequence.start_link([], 0, 1)
 
       assert {:ok,
@@ -277,8 +278,8 @@ defmodule Indexer.BlockFetcherTest do
     return
   end
 
-  defp state(_) do
-    {:ok, state} = BlockFetcher.init([])
+  defp state(%{json_rpc_named_arguments: json_rpc_named_arguments}) do
+    {:ok, state} = BlockFetcher.init(json_rpc_named_arguments: json_rpc_named_arguments)
 
     %{state: state}
   end

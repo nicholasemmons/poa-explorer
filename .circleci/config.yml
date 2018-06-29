@@ -281,7 +281,7 @@ jobs:
           name: Scan explorer_web for vulnerabilities
           command: mix sobelow --config
           working_directory: "apps/explorer_web"
-  test:
+  test_mox:
     docker:
       # Ensure .tool-versions matches
       - image: circleci/elixir:1.6.5-node-browsers
@@ -293,7 +293,47 @@ jobs:
           PGUSER: postgres
       - image: circleci/postgres:10.3-alpine
         environment:
-          # Match apps/explorer/config/test.exs config :explorerer, Explorer.Repo, database
+          # Match apps/explorer/config/test.exs config :explorer, Explorer.Repo, database
+          POSTGRES_DB: explorer_test
+          # match PGPASSWORD for elixir image above
+          POSTGRES_PASSWORD: postgres
+          # match PGUSER for elixir image above
+          POSTGRES_USER: postgres
+
+    working_directory: ~/app
+
+    steps:
+      - attach_workspace:
+          at: .
+
+      - run: mix local.hex --force
+      - run: mix local.rebar --force
+
+      - run:
+          name: Wait for DB
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
+
+      - run: mix coveralls.circle --umbrella
+
+      - store_test_results:
+          path: _build/test/junit
+  test_http:
+    docker:
+      # Ensure .tool-versions matches
+      - image: circleci/elixir:1.6.5-node-browsers
+        environment:
+          MIX_ENV: test
+          # match POSTGRES_PASSWORD for postgres image below
+          PGPASSWORD: postgres
+          # match POSTGRES_USER for postgres image below
+          PGUSER: postgres
+          # enable on-chain tests against Sokol instead of `mox` tests run locally
+          ETHEREUM_JSONRPC_TRANSPORT: "EthereumJSONRPC.HTTP"
+          ETHEREUM_JSONRPC_HTTP: "EthereumJSONRPC.HTTP.HTTPoison"
+          ETHEREUM_JSONRPC_HTTP_URL: "https://sokol-trace.poa.network"
+      - image: circleci/postgres:10.3-alpine
+        environment:
+          # Match apps/explorer/config/test.exs config :explorer, Explorer.Repo, database
           POSTGRES_DB: explorer_test
           # match PGPASSWORD for elixir image above
           POSTGRES_PASSWORD: postgres
@@ -340,7 +380,8 @@ workflows:
             - credo
             - eslint
             - sobelow
-            - test
+            - test_mox
+            - test_http
       - dialyzer:
           requires:
             - build
@@ -353,6 +394,9 @@ workflows:
       - sobelow:
           requires:
             - build
-      - test:
+      - test_mox:
+          requires:
+            - build
+      - test_http:
           requires:
             - build
