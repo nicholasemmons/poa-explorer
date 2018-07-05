@@ -26,8 +26,9 @@ defmodule ExplorerWeb.AddressTransactionController do
         |> Keyword.merge(current_filter(params))
 
       transactions_plus_one = Chain.address_to_transactions(address, full_options)
-
       {transactions, next_page} = split_list_by_page(transactions_plus_one)
+
+      contract_transaction  = Chain.contract_transaction_from_address(address_hash)
 
       render(
         conn,
@@ -37,7 +38,8 @@ defmodule ExplorerWeb.AddressTransactionController do
         exchange_rate: Market.get_exchange_rate(Explorer.coin()) || Token.null(),
         filter: params["filter"],
         transactions: transactions,
-        transaction_count: transaction_count(address)
+        transaction_count: transaction_count(address),
+        contract_transaction: contract_transaction
       )
     else
       :error ->

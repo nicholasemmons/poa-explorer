@@ -53,6 +53,10 @@ defmodule ExplorerWeb.AddressView do
     to_string(hash)
   end
 
+  def hash(%Explorer.Chain.Hash{} = hash) do
+    to_string(hash)
+  end
+
   def qr_code(%Address{hash: hash}) do
     hash
     |> to_string()

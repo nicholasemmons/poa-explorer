@@ -622,6 +622,21 @@ defmodule Explorer.Chain do
     end
   end
 
+  # TODO: add docs
+  def contract_transaction_from_address(
+    %Hash{byte_count: unquote(Hash.Truncated.byte_count())} = address_hash
+  ) do
+    query =
+      from(
+        transaction in Explorer.Chain.Transaction,
+        join: address in Explorer.Chain.Address, on: address.hash == transaction.to_address_hash,
+        where: transaction.to_address_hash == ^address_hash and not is_nil(address.contract_code),
+        select: transaction
+      )
+
+    Repo.one(query)
+  end
+
   def find_contract_address(%Hash{byte_count: unquote(Hash.Truncated.byte_count())} = hash) do
     query =
       from(

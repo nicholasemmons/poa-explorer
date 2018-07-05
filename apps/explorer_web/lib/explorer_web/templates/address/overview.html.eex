@@ -18,9 +18,44 @@
       <div class="row">
         <div class="col-sm-6">
           <table class="table table-font table-responsive-sm table-horizontal" data-selector='overview'>
-            <%= render "_values.html", address: @address, exchange_rate: @exchange_rate, transaction_count: @transaction_count %>
+            <%= render(
+                  "_values.html",
+                  address: @address,
+                  exchange_rate: @exchange_rate,
+                  transaction_count: @transaction_count,
+                  contract_transaction: @contract_transaction,
+                  locale: @locale
+                ) %>
           </table>
         </div>
+
+        <%= if contract?(@address) do %>
+          <div class="col-sm-6">
+            <table class="table table-font table-responsive-sm table-horizontal" data-selector='overview'>
+              <tbody>
+                <tr>
+                  <th scope="row">
+                    <%= gettext "Contract creator" %>
+                  </th>
+                  <td>
+                    <%= link(@contract_transaction.from_address_hash |> hash |> String.slice(2..7),
+                        to: address_path(ExplorerWeb.Endpoint, :show, @locale, @contract_transaction.from_address_hash),
+                        "data-toggle": "tooltip",
+                        "data-placement": "top",
+                        "data-test": "transaction_hash",
+                        class: "monospace",
+                        title: @contract_transaction.from_address_hash) %>
+
+                    <span>at tnx</span>
+
+                    <%= render ExplorerWeb.TransactionView, "_link.html", locale: @locale, transaction: @contract_transaction %>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+
       </div>
     </div>
   </div>
