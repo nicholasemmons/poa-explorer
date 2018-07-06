@@ -628,10 +628,10 @@ defmodule Explorer.Chain do
   ) do
     query =
       from(
-        transaction in Explorer.Chain.Transaction,
-        join: address in Explorer.Chain.Address, on: address.hash == transaction.to_address_hash,
-        where: transaction.to_address_hash == ^address_hash and not is_nil(address.contract_code),
-        select: transaction
+        it in InternalTransaction,
+        join: t in Transaction, on: t.hash == it.transaction_hash,
+        where: it.type == ^:create and it.created_contract_address_hash == ^address_hash,
+        select: t
       )
 
     Repo.one(query)

@@ -1007,4 +1007,18 @@ defmodule Explorer.ChainTest do
   test "circulating_supply/0" do
     assert Chain.circulating_supply() == ProofOfAuthority.circulating()
   end
+
+  describe "contract_transaction_from_address/1" do
+    test "finds the transaction that contract was created given an address" do
+      transaction = insert(:transaction) |> Repo.preload(:from_address)
+
+      %InternalTransaction{created_contract_address: address} = insert(
+        :internal_transaction_create,
+        index: 0,
+        transaction: transaction
+      )
+
+      assert Chain.contract_transaction_from_address(address.hash).hash == transaction.hash
+    end
+  end
 end
