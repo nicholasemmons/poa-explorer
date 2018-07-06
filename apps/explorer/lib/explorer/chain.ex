@@ -7,7 +7,6 @@ defmodule Explorer.Chain do
     only: [
       from: 2,
       join: 4,
-      join: 5,
       limit: 2,
       order_by: 2,
       order_by: 3,
@@ -2258,14 +2257,20 @@ defmodule Explorer.Chain do
 
   defp fetch_transactions(paging_options \\ nil) do
     Transaction
-    |> join(
-      :left,
-      [transaction],
-      internal_transaction in subquery(from(it in InternalTransaction, where: it.type == ^"create", limit: 1)),
-      internal_transaction.transaction_hash == transaction.hash
-    )
-    |> select_merge([_, internal_transaction], %{
-      created_contract_address_hash: internal_transaction.created_contract_address_hash
+    |> select_merge([transaction], %{
+      created_contract_address_hash:
+        type(
+          fragment(
+            """
+            (SELECT i."created_contract_address_hash"
+            FROM "internal_transactions" AS i
+            WHERE (i."transaction_hash" = ?) AND (i."type" = 'create')
+            LIMIT 1)
+            """,
+            transaction.hash
+          ),
+          Explorer.Chain.Hash.Truncated
+        )
     })
     |> order_by([transaction], desc: transaction.block_number, desc: transaction.index)
     |> handle_paging_options(paging_options)
