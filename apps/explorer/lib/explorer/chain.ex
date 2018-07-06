@@ -2258,7 +2258,12 @@ defmodule Explorer.Chain do
 
   defp fetch_transactions(paging_options \\ nil) do
     Transaction
-    |> load_contract_creation()
+    |> join(
+      :left,
+      [transaction],
+      internal_transaction in subquery(from(it in InternalTransaction, where: it.type == ^"create", limit: 1)),
+      internal_transaction.transaction_hash == transaction.hash
+    )
     |> select_merge([_, internal_transaction], %{
       created_contract_address_hash: internal_transaction.created_contract_address_hash
     })
@@ -2506,16 +2511,6 @@ defmodule Explorer.Chain do
     Enum.reduce(necessity_by_association, query, fn {association, join}, acc_query ->
       join_association(acc_query, association, join)
     end)
-  end
-
-  defp load_contract_creation(query) do
-    join(
-      query,
-      :left,
-      [transaction],
-      internal_transaction in assoc(transaction, :internal_transactions),
-      internal_transaction.type == ^:create
-    )
   end
 
   defp page_blocks(query, %PagingOptions{key: nil}), do: query
